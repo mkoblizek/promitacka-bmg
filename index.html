@@ -215,7 +215,7 @@ td input[type=number]{width:62px}
   <div class="dlg-head"><h3>Řídicí kódy v souboru</h3><button class="btn" data-close>Zavřít</button></div>
   <div class="dlg-body">
     <p class="note" style="margin:0 0 10px">Přiřaď kódům význam a náhled je převede. „Celé ID“ znamená, že pravidlo platí pro všechny varianty parametrů (třeba všechny barvy). Šířka ikony je v násobcích velikosti písma.</p>
-    <label class="unf"><input type="checkbox" id="onlyUnassigned"> Jen nepřiřazené kódy</label>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:0 0 10px"><label class="unf" style="margin:0"><input type="checkbox" id="onlyUnassigned"> Jen nepřiřazené kódy</label><button class="btn" id="btnResetCodes" style="margin-left:auto">Obnovit výchozí kódy</button></div>
     <div style="overflow:auto"><table id="codesTbl"></table></div>
   </div>
 </dialog>
@@ -231,18 +231,50 @@ const LSKEY = 'bmg-promitacka-v1';
 
 const ALLOWED_DEFAULT = (() => { let s = ''; for (let c = 32; c < 127; c++) s += String.fromCharCode(c);
   return s + 'áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽäöüßÄÖÜ„“‚‘…–—«»'; })();
+// Kódy podle dekompilace TP (zeldaret/tp, include/d/d_msg_class.h)
+const NAMES = {};
+const DEF_RULES = (() => {
+  const R = {}, h = i => i.toString(16).padStart(4, '0');
+  const set = (g, i, type, label, name, w) => { const k = g + ':' + h(i); R[k] = {type}; if (label != null) R[k].label = label; if (w) R[k].w = w; if (name) NAMES[k] = name; };
+  ['01','02','ff'].forEach(g => { set(g, 0, 'color', null, 'barva'); set(g, 1, 'scale', null, 'velikost písma (%)'); set(g, 2, 'hide', null, 'ruby'); });
+  set('00', 0, 'name', null, 'jméno hráče');
+  [[1,'okamžitý text'],[2,'typ textu'],[3,'auto okno'],[4,'auto okno'],[5,'okno nejvýš'],[6,'neznámý'],[7,'pauza'],[8,'volba ze 2'],[9,'volba ze 3'],
+   [0x1e,'vložená volba 2 – další'],[0x1f,'vložená volba 2 – první'],[0x20,'čekání na volbu'],[0x21,'bez účinku'],[0x26,'potvrzení'],[0x28,'demo okno'],
+   [0x33,'vložená volba 3 – další'],[0x34,'vložená volba 3 – první'],[0x35,'neznámý'],[0x36,'okno nejméně'],[0x3d,'řádek dolů']]
+    .forEach(([i, n]) => set('00', i, 'hide', null, n));
+  [[0x0a,'A','GC A'],[0x0b,'B','GC B'],[0x0c,'C','GC C-páčka'],[0x0d,'L','GC L'],[0x0e,'R','GC R'],[0x0f,'X','GC X'],[0x10,'Y','GC Y'],[0x11,'Z','GC Z'],
+   [0x12,'✚','GC křížový ovladač'],[0x13,'✛','páčka'],[0x14,'◀','šipka vlevo'],[0x15,'▶','šipka vpravo'],[0x16,'▲','šipka nahoru'],[0x17,'▼','šipka dolů'],
+   [0x18,'S▲','páčka nahoru'],[0x19,'S▼','páčka dolů'],[0x1a,'S◀','páčka vlevo'],[0x1b,'S▶','páčka vpravo'],[0x1c,'S↕','páčka svisle'],[0x1d,'S↔','páčka vodorovně'],
+   [0x23,'◎','červený cíl'],[0x24,'◎','žlutý cíl'],[0x27,'A★','A s hvězdou'],[0x2a,'◎','bílý cíl'],[0x2c,'⌖','ikona warpu'],[0x2e,'X/Y','X/Y'],[0x2f,'Y/X','Y/X'],
+   [0x30,'BB','ikona vaku na bomby'],[0x39,'♥','srdce'],[0x3a,'♪','nota']]
+    .forEach(([i, l, n]) => set('00', i, 'icon', l, n, l.length > 2 ? 1.8 : (l.length > 1 ? 1.5 : 1.2)));
+  [[0x22,'Epona','jméno koně'],[0x25,'999','zadaná hodnota'],[0x29,'[pach]','název pachu'],[0x2b,'[portál]','název portálu'],[0x2d,'[bomby]','název bomb'],
+   [0x31,'99','počet bomb'],[0x32,'30','cena bomb'],[0x37,'99','max. bomb'],[0x38,'99','max. šípů'],[0x3b,'[hmyz]','název hmyzu'],[0x3c,'[dopis]','název dopisu'],
+   [0x3e,'1','stránka dopisu'],[0x3f,'9','počet stran dopisu']]
+    .forEach(([i, l, n]) => set('00', i, 'text', l, n));
+  set('03', 0, 'hide', null, 'Wii: náhrada ID zprávy');
+  ['A','B','⌂','−','+','1','2','✚','✚▲','✚▼','✚↔','✚▶','✚◀','Wii','◎','N','Wii','✦','C','Z']
+    .forEach((l, k) => set('03', k + 1, 'icon', l, 'Wii ' + ['A','B','Home','−','+','1','2','křížový ovl. (předmět)','křížový ovl. nahoru','křížový ovl. dolů','křížový ovl. vodorovně','křížový ovl. vpravo','křížový ovl. vlevo','ovladač Wii','zaměřovač','Nunchuk','ovladač Wii 2','víla','C','Z'][k], l.length > 2 ? 1.8 : (l.length > 1 ? 1.5 : 1.2)));
+  ['$','\\','@','#','♭','√','%','ha','a','l','W','cal','$','¢'].forEach((l, i) => set('04', i, 'text', l, 'znak ' + l));
+  [[0,'12:00','čas'],[3,'99','hmyz'],[7,'999','body na řece'],[8,'99','délka ryby'],[9,'999','zbývá vybrat'],[0x0a,'9','nové dopisy'],[0x0b,'99','počet duchů'],[0x0c,'999','skóre balónků'],[0x0d,'99','počet ryb'],[0x0e,'9','úroveň']]
+    .forEach(([i, l, n]) => set('05', i, 'text', l, 'číslo: ' + n));
+  [[0,'Links','genitiv jména hráče'],[1,'Eponas','genitiv jména koně'],[2,'♂','samec'],[3,'♀','samice'],[4,'★','hvězda'],[5,'※','poznámka'],[6,'←','šipka vlevo'],[7,'→','šipka vpravo'],[8,'↑','šipka nahoru'],[9,'↓','šipka dolů'],[0x0a,'•','odrážka'],[0x0b,'• ','odrážka s mezerou']]
+    .forEach(([i, l, n]) => set('06', i, 'text', l, n));
+  return R;
+})();
 const DEF = {
-  font: "'Nunito', sans-serif", size: 24, maxPx: 560, maxChars: 0, perPage: 3, elemPage: false,
-  player: 'Link', showCodes: false,
-  colors: {0:'#ffffff',1:'#ff5a4e',2:'#7bd96a',3:'#6aa8ff',4:'#f5d547',5:'#5fd7e6',6:'#c88cf2',7:'#b9b9b9',8:'#f59a3c'},
+  font: "'Nunito', sans-serif", size: 24, maxPx: 560, maxChars: 0, perPage: 4, elemPage: false,
+  player: 'Link', showCodes: false, ver: 2,
+  colors: {0:'#ffffff',1:'#f07878',2:'#aadc8c',3:'#a0b4dc',4:'#dcdc82',5:'#b4c8e6',6:'#c8a0dc',7:'#ffffff',8:'#dcaa78'},
   allowed: ALLOWED_DEFAULT,
-  rules: {'ff:0000':{type:'color'}, 'ff:0001':{type:'scale'}, '00:0000':{type:'name'}}
+  rules: DEF_RULES
 };
 const TYPES = [['chip','neznámý (značka)'],['icon','tlačítko / ikona'],['name','jméno hráče'],['text','zástupný text'],['color','barva'],['scale','velikost písma'],['hide','skrýt (bez šířky)'],['page','konec stránky']];
 
 function clone(o){ return JSON.parse(JSON.stringify(o)); }
 function loadSettings(){
   try { const o = JSON.parse(localStorage.getItem(LSKEY) || 'null');
+    if (o && !o.ver){ if (o.perPage === 3) delete o.perPage; delete o.colors; o.ver = 2; }
     if (o) return Object.assign(clone(DEF), o, {colors:Object.assign({}, DEF.colors, o.colors||{}), rules:Object.assign({}, DEF.rules, o.rules||{})});
   } catch(e) {}
   return clone(DEF);
@@ -648,7 +680,7 @@ function renderCodes(focus){
     const rule = own || grp || {type:'chip'};
     const scopeKey = !own && grp;
     return `<tr data-h="${esc(tk.hex)}" data-k="${esc(tk.key || '')}">
-      <td><code>${esc(tk.raw)}</code>${tk.key ? `<br><span class="note">skupina ${tk.group}, ID ${tk.idh}${tk.params.length ? ', param ' + tk.params.map(b => b.toString(16).padStart(2,'0')).join('') : ''}</span>` : ''}</td>
+      <td><code>${esc(tk.raw)}</code>${tk.key && NAMES[tk.key] ? `<br><b>${esc(NAMES[tk.key])}</b>` : ''}${tk.key ? `<br><span class="note">skupina ${tk.group}, ID ${tk.idh}${tk.params.length ? ', param ' + tk.params.map(b => b.toString(16).padStart(2,'0')).join('') : ''}</span>` : ''}</td>
       <td><select data-f="type">${TYPES.map(([v, l]) => `<option value="${v}"${rule.type === v ? ' selected' : ''}>${l}</option>`).join('')}</select></td>
       <td><input type="text" data-f="label" value="${esc(rule.label || '')}" placeholder="${rule.type === 'icon' ? 'např. A' : rule.type === 'text' ? 'např. 999' : ''}"></td>
       <td><input type="number" data-f="w" step="0.1" min="0" value="${rule.w || ''}" placeholder="1.2"></td>
@@ -733,6 +765,10 @@ document.addEventListener('keydown', e => {
 $('#btnSet').onclick = () => { fillSettings(); if (DE) updateDeStat(); $('#dlgSet').showModal(); };
 $('#btnCodes').onclick = () => { $('#dlgCodes').showModal(); renderCodes(); };
 $('#onlyUnassigned').onchange = () => renderCodes();
+$('#btnResetCodes').onclick = () => {
+  if (!confirm('Zahodit všechna ručně přiřazená pravidla kódů a vrátit výchozí podle hry?')) return;
+  S.rules = clone(DEF_RULES); persist(); reanalyzeAll(); renderList(); if (cur >= 0) show(cur); renderCodes(); toast('Kódy vráceny na výchozí');
+};
 $('#view').addEventListener('click', e => {
   const m = e.target.closest('.mk.u'); if (!m) return;
   $('#dlgCodes').showModal(); renderCodes(m.dataset.h);
@@ -742,8 +778,8 @@ let tT = null;
 function toast(m){ const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(tT); tT = setTimeout(() => t.classList.remove('show'), 2600); }
 
 const SAMPLE = [
-  {"ID":"1000","text":["Konečně jsi vzhůru, {1a0500000000}!","Dnes musíš zajet do {1a06ff000001}Hyrulu{1a06ff000000}","a předat dar od starosty."]},
-  {"ID":"1001","text":["Stiskni {1a0500000a} a promluv si s Ilií.","Tlačítkem {1a0500000b} se vrátíš  zpět."]},
+  {"ID":"1000","text":["Konečně jsi vzhůru, {1a05000000}!","Dnes musíš zajet do {1a06ff000001}Hyrulu{1a06ff000000}","a předat dar od starosty."]},
+  {"ID":"1001","text":["Stiskni {1a05030001} a promluv si s Ilií.","Tlačítkem {1a05030002} se vrátíš  zpět.","Mapu otevřeš tlačítkem {1a05030007}, menu {1a05030005}."]},
   {"ID":"1002","text":["{1a06ff000004}Tenhle řádek je schválně tak dlouhý, že se do okna vůbec nevejde.","Barva tu zůstala zapnutá ."]},
   {"ID":"1003","text":["Rybář říká, že v jezeře plave","obrovský sumec. Chceš ho chytit?","{1a07000007000f}Ano","Ne"]},
   {"ID":"1004","text":["Získal jsi {1a06ff000003}Mistrovský meč{1a06ff000000}!","Je to legendární zbraň,","kterou může nést jen hrdina hrdina.","Ukaž ji Midně – možná ł ví víc."]}
