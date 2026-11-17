@@ -94,6 +94,10 @@ aside{border-right:1px solid var(--line);display:flex;flex-direction:column;min-
 .mk::before{content:attr(data-l);position:absolute;left:-1px;top:-9px;font:600 9px/1 var(--mono);color:#aeb6ff;white-space:nowrap;background:rgba(14,18,38,.85);padding:1px 2px;border-radius:2px}
 .mk.u{border-color:#e6a046}
 .mk.u::before{color:#1a1d31;background:#e6a046}
+.mk.u{cursor:pointer}
+.mk.u:hover::before{outline:2px solid #fff}
+tr.hl td{background:var(--sel)}
+.unf{display:flex;gap:6px;align-items:center;font-size:15px;margin:0 0 10px}
 
 .editor-wrap{margin-top:18px}
 .editor-wrap textarea{width:100%;min-height:150px;resize:vertical;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--panel);font:14.5px/1.6 var(--mono)}
@@ -211,6 +215,7 @@ td input[type=number]{width:62px}
   <div class="dlg-head"><h3>Řídicí kódy v souboru</h3><button class="btn" data-close>Zavřít</button></div>
   <div class="dlg-body">
     <p class="note" style="margin:0 0 10px">Přiřaď kódům význam a náhled je převede. „Celé ID“ znamená, že pravidlo platí pro všechny varianty parametrů (třeba všechny barvy). Šířka ikony je v násobcích velikosti písma.</p>
+    <label class="unf"><input type="checkbox" id="onlyUnassigned"> Jen nepřiřazené kódy</label>
     <div style="overflow:auto"><table id="codesTbl"></table></div>
   </div>
 </dialog>
@@ -288,7 +293,7 @@ function sty(color, scale){
   let st = `color:${colorOf(color)}`; if (scale !== 1) st += `;font-size:${scale}em`;
   return ` style="${st}"`;
 }
-function mark(tk, kind, label){ return `<span class="mk ${kind}" data-l="${esc(label)}" title="${esc(tk.raw)}"></span>`; }
+function mark(tk, kind, label){ return `<span class="mk ${kind}" data-l="${esc(label)}" data-h="${esc(tk.hex)}" title="${esc(tk.raw + (kind === 'u' ? ' – klikni a nastav' : ''))}"></span>`; }
 function shortHex(tk){ return tk.key ? tk.hex.slice(4) : tk.hex; }
 function txtHtml(s, color, scale, bad){
   const ch = [...s]; let out = '', buf = '';
@@ -633,9 +638,11 @@ function collectCodes(){
   if (DE) DE.map.forEach((segs, id) => add(segs, id));
   return [...m.values()].sort((a, b) => (a.tk.key || '~').localeCompare(b.tk.key || '~') || a.tk.hex.localeCompare(b.tk.hex));
 }
-function renderCodes(){
-  const rows = collectCodes();
-  if (!rows.length){ $('#codesTbl').innerHTML = '<tr><td>Soubor neobsahuje žádné kódy ve složených závorkách.</td></tr>'; return; }
+function renderCodes(focus){
+  const onlyUn = $('#onlyUnassigned').checked;
+  let rows = collectCodes();
+  if (onlyUn) rows = rows.filter(r => { const tk = r.tk; const ru = S.rules[tk.hex] || (tk.key && S.rules[tk.key]); return !ru || ru.type === 'chip' || tk.hex === focus; });
+  if (!rows.length){ $('#codesTbl').innerHTML = `<tr><td>${onlyUn ? 'Všechny kódy už mají přiřazený význam.' : 'Soubor neobsahuje žádné kódy ve složených závorkách.'}</td></tr>`; return; }
   $('#codesTbl').innerHTML = '<tr><th>Kód</th><th>Význam</th><th>Popisek</th><th>Šířka</th><th>Celé ID</th><th>Výskyt</th></tr>' + rows.map(r => {
     const tk = r.tk; const own = S.rules[tk.hex]; const grp = tk.key && S.rules[tk.key];
     const rule = own || grp || {type:'chip'};
@@ -648,6 +655,10 @@ function renderCodes(){
       <td><input type="checkbox" data-f="scope"${scopeKey ? ' checked' : ''}${tk.key ? '' : ' disabled'}></td>
       <td><button class="btn" data-show="${esc(tk.raw)}" title="Ukázat zprávy s tímto kódem">${r.n}×</button></td></tr>`;
   }).join('');
+  if (focus){
+    const tr = [...document.querySelectorAll('#codesTbl tr[data-h]')].find(t => t.dataset.h === focus);
+    if (tr){ tr.classList.add('hl'); const s = tr.querySelector('select'); if (s) s.focus({preventScroll:true}); requestAnimationFrame(() => tr.scrollIntoView({block:'center'})); }
+  }
 }
 $('#codesTbl').addEventListener('change', e => {
   const tr = e.target.closest('tr[data-h]'); if (!tr) return;
@@ -720,7 +731,12 @@ document.addEventListener('keydown', e => {
   if (e.key === 'ArrowUp' || e.key === 'k'){ e.preventDefault(); step(-1); }
 });
 $('#btnSet').onclick = () => { fillSettings(); if (DE) updateDeStat(); $('#dlgSet').showModal(); };
-$('#btnCodes').onclick = () => { renderCodes(); $('#dlgCodes').showModal(); };
+$('#btnCodes').onclick = () => { $('#dlgCodes').showModal(); renderCodes(); };
+$('#onlyUnassigned').onchange = () => renderCodes();
+$('#view').addEventListener('click', e => {
+  const m = e.target.closest('.mk.u'); if (!m) return;
+  $('#dlgCodes').showModal(); renderCodes(m.dataset.h);
+});
 document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.closest('dialog').close());
 let tT = null;
 function toast(m){ const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(tT); tT = setTimeout(() => t.classList.remove('show'), 2600); }
