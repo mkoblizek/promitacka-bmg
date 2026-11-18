@@ -193,6 +193,7 @@ td input[type=number]{width:62px}
       <label class="fld"><span>Max. znaků na řádek (0 = nehlídat)</span><input type="number" id="sMaxCh" min="0" max="200"></label>
       <label class="fld"><span>Řádků na stránku okna</span><input type="number" id="sPerPage" min="1" max="20"></label>
       <label class="fld"><span>Jméno hráče pro kód jména</span><input type="text" id="sPlayer"></label>
+      <label class="fld"><span>Jméno koně pro kód jména koně</span><input type="text" id="sHorse"></label>
       <label class="fld full"><span><input type="checkbox" id="sElem"> Každá položka pole „text“ je samostatná stránka</span></label>
       <label class="fld full"><span><input type="checkbox" id="sShowCodes"> Ukazovat značky i u barev, velikosti a skrytých kódů</span></label>
       <div class="fld full">
@@ -248,7 +249,8 @@ const DEF_RULES = (() => {
    [0x23,'◎','červený cíl'],[0x24,'◎','žlutý cíl'],[0x27,'A★','A s hvězdou'],[0x2a,'◎','bílý cíl'],[0x2c,'⌖','ikona warpu'],[0x2e,'X/Y','X/Y'],[0x2f,'Y/X','Y/X'],
    [0x30,'BB','ikona vaku na bomby'],[0x39,'♥','srdce'],[0x3a,'♪','nota']]
     .forEach(([i, l, n]) => set('00', i, 'icon', l, n, l.length > 2 ? 1.8 : (l.length > 1 ? 1.5 : 1.2)));
-  [[0x22,'Epona','jméno koně'],[0x25,'999','zadaná hodnota'],[0x29,'[pach]','název pachu'],[0x2b,'[portál]','název portálu'],[0x2d,'[bomby]','název bomb'],
+  set('00', 0x22, 'horse', null, 'jméno koně');
+  [[0x25,'999','zadaná hodnota'],[0x29,'[pach]','název pachu'],[0x2b,'[portál]','název portálu'],[0x2d,'[bomby]','název bomb'],
    [0x31,'99','počet bomb'],[0x32,'30','cena bomb'],[0x37,'99','max. bomb'],[0x38,'99','max. šípů'],[0x3b,'[hmyz]','název hmyzu'],[0x3c,'[dopis]','název dopisu'],
    [0x3e,'1','stránka dopisu'],[0x3f,'9','počet stran dopisu']]
     .forEach(([i, l, n]) => set('00', i, 'text', l, n));
@@ -264,17 +266,18 @@ const DEF_RULES = (() => {
 })();
 const DEF = {
   font: "'Nunito', sans-serif", size: 24, maxPx: 560, maxChars: 0, perPage: 4, elemPage: false,
-  player: 'Link', showCodes: false, ver: 2,
+  player: 'Link', horse: 'Epona', showCodes: false, ver: 3,
   colors: {0:'#ffffff',1:'#f07878',2:'#aadc8c',3:'#a0b4dc',4:'#dcdc82',5:'#b4c8e6',6:'#c8a0dc',7:'#ffffff',8:'#dcaa78'},
   allowed: ALLOWED_DEFAULT,
   rules: DEF_RULES
 };
-const TYPES = [['chip','neznámý (značka)'],['icon','tlačítko / ikona'],['name','jméno hráče'],['text','zástupný text'],['color','barva'],['scale','velikost písma'],['hide','skrýt (bez šířky)'],['page','konec stránky']];
+const TYPES = [['chip','neznámý (značka)'],['icon','tlačítko / ikona'],['name','jméno hráče'],['horse','jméno koně'],['text','zástupný text'],['color','barva'],['scale','velikost písma'],['hide','skrýt (bez šířky)'],['page','konec stránky']];
 
 function clone(o){ return JSON.parse(JSON.stringify(o)); }
 function loadSettings(){
   try { const o = JSON.parse(localStorage.getItem(LSKEY) || 'null');
     if (o && !o.ver){ if (o.perPage === 3) delete o.perPage; delete o.colors; o.ver = 2; }
+    if (o && o.ver < 3){ const r = o.rules && o.rules['00:0022']; if (r && r.type === 'text' && r.label === 'Epona') delete o.rules['00:0022']; o.ver = 3; }
     if (o) return Object.assign(clone(DEF), o, {colors:Object.assign({}, DEF.colors, o.colors||{}), rules:Object.assign({}, DEF.rules, o.rules||{})});
   } catch(e) {}
   return clone(DEF);
@@ -344,6 +347,7 @@ function plainLine(line){
   return line.replace(CODE_RE, (m, inner) => {
     const tk = parseCode(inner, m); const r = ruleFor(tk);
     if (r.type === 'name') return S.player;
+    if (r.type === 'horse') return S.horse;
     if (r.type === 'text') return r.label || '';
     if (r.type === 'icon') return '\u0007';
     return '\u0007';
@@ -366,7 +370,7 @@ function analyze(segs, de){
             if (S.showCodes) html += mark(tk, 'c', 'barva ' + color); break;
           case 'scale': { const v = tk.pval; scale = (v >= 10 && v <= 400) ? v/100 : 1;
             if (S.showCodes) html += mark(tk, 'c', 'vel. ' + v); break; }
-          case 'name': case 'text': { const s = r.type === 'name' ? S.player : (r.label || '');
+          case 'name': case 'horse': case 'text': { const s = r.type === 'name' ? S.player : r.type === 'horse' ? S.horse : (r.label || '');
             html += `<span class="var"${sty(color, scale)} title="${esc(tk.raw)}">${esc(s)}</span>`; w += measure(s)*scale; chars += [...s].length; break; }
           case 'icon': { const ew = +r.w || 1.2; const px = ew*S.size*scale;
             html += `<span class="ico" style="width:${px.toFixed(1)}px" title="${esc(tk.raw)}">${esc(r.label || '?')}</span>`; w += px; chars += 1; break; }
@@ -618,7 +622,7 @@ window.addEventListener('resize', fit);
 // ---------- settings ----------
 function fillSettings(){
   $('#sFont').value = S.font; $('#sSize').value = S.size; $('#sMaxPx').value = S.maxPx; $('#sMaxCh').value = S.maxChars;
-  $('#sPerPage').value = S.perPage; $('#sPlayer').value = S.player; $('#sElem').checked = S.elemPage; $('#sShowCodes').checked = S.showCodes;
+  $('#sPerPage').value = S.perPage; $('#sPlayer').value = S.player; $('#sHorse').value = S.horse; $('#sElem').checked = S.elemPage; $('#sShowCodes').checked = S.showCodes;
   $('#sAllowed').value = S.allowed;
   $('#sColors').innerHTML = Object.keys(S.colors).sort((a, b) => a - b).map(k => `<label>${k}<input type="color" data-c="${k}" value="${S.colors[k]}"></label>`).join('') +
     `<button class="btn" id="addColor" type="button">Přidat</button>`;
@@ -642,6 +646,7 @@ $('#dlgSet').addEventListener('input', e => {
     case 'sMaxCh': S.maxChars = Math.max(0, +t.value || 0); break;
     case 'sPerPage': S.perPage = Math.max(1, +t.value || 1); break;
     case 'sPlayer': S.player = t.value; break;
+    case 'sHorse': S.horse = t.value; break;
     case 'sElem': S.elemPage = t.checked; break;
     case 'sShowCodes': S.showCodes = t.checked; break;
     case 'sAllowed': S.allowed = t.value; break;
